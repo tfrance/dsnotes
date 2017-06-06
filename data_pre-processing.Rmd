@@ -1,16 +1,88 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Data Pre-Processing"
+output:
+  html_document: default
+  html_notebook: default
 ---
+## Introduction
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+This exploration of data wrangling is based on [`Applied Predictive Modeling`]("http://amzn.to/2qUOSuO"), chapter 3, "Data Pre-Processing"
 
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+## Setup
 
-```{r}
-plot(cars)
+The data represent information about movies combined from two sources, Rotten Tomatoes and IMDB (Internet Movie Database).
+
+Data: [`movies_merged`](https://s3.amazonaws.com/content.udacity-data.com/courses/gt-cs6242/project/movies_merged).
+
+Load the dataset into memory:
+```{r results='hide'}
+load('movies_merged')
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+Load the R packages we'll need:
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(knitr)
+library(caret)
+```
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file).
+## Data
+
+We can see from a list of the columns that the dataset has a lot to do with ratings and reviews
+```{r}
+df = movies_merged
+cat("Dataset has", dim(df)[1], "rows and", dim(df)[2], "columns", end="\n", file="")
+colnames(df)
+```
+
+### 1. Remove non-movie rows
+
+```{r}
+df <- filter(df, Type == 'movie')
+dim(df)
+```
+
+### 2. Drop rows with missing `Gross` value
+
+Since our goal is to model `Gross` revenue against other variables, rows that have missing `Gross` values are not useful to us.
+
+```{r}
+df <- filter(df, !is.na(Gross))
+dim(df)
+```
+
+### 3. Initial model
+
+How well can we model the data without pre-processing any of the features? Let's find out:
+
+Split the data into train and test (not using cross validation):
+
+```{r}
+set.seed(1)
+inTrainingSet <- caret::createDataPartition(df$Gross, p = 0.8, list = FALSE)
+trainingSet <- df[inTrainingSet,]
+testSet <- df[-inTrainingSet,]
+```
+Train a model on all available features:
+```{r}
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated n times
+                           repeats = 1)
+
+model <- train(Gross ~ ., data = trainingSet, 
+                 method = "lm", 
+                 trControl = fitControl,
+                 na.rm = TRUE)
+
+model
+```
+
+Too many missing values. We could try limiting ourselves to complete cases (no NAs) and try again:
+
+```{r}
+trainingSet <- trainingSet %>% drop_na()
+dim(trainingSet)
+```
+
